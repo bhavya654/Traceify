@@ -42,7 +42,7 @@ const ReportGenerator = () => {
                         </div>
                     </div>
                     <nav className="flex-1 space-y-1">
-                        <Link to="/" className="text-[#191C1E]/70 flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold hover:bg-[#ECEEF0] transition-all">
+                        <Link to="/dashboard" className="text-[#191C1E]/70 flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold hover:bg-[#ECEEF0] transition-all">
                             <span className="material-symbols-outlined mr-4">dashboard</span>
                             Dashboard
                         </Link>

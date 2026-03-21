@@ -42,7 +42,7 @@ const Dashboard = () => {
               </div>
             </div>
             <nav className="flex-1 space-y-1">
-              <Link to="/" className="bg-[#B6B4FF]/20 text-primary border-r-4 border-primary flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold">
+              <Link to="/dashboard" className="bg-[#B6B4FF]/20 text-primary border-r-4 border-primary flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold">
                 <span className="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
                 Dashboard
               </Link>
@@ -77,10 +77,10 @@ const Dashboard = () => {
                 <span className="material-symbols-outlined mr-4" data-icon="help">help</span>
                 Help
               </a>
-              <a className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-3 font-manrope text-xs uppercase tracking-widest font-bold" href="#">
+              <Link to="/login" className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-3 font-manrope text-xs uppercase tracking-widest font-bold">
                 <span className="material-symbols-outlined mr-4" data-icon="logout">logout</span>
                 Sign Out
-              </a>
+              </Link>
             </div>
           </aside>
 

@@ -11,7 +11,7 @@ const InvestigationWorkspace = () => {
                     <p className="text-[10px] text-on-surface-variant tracking-normal opacity-60">Fraud Ops</p>
                 </div>
                 <nav className="flex-1 space-y-1">
-                    <Link to="/" className="text-on-surface/70 flex items-center px-6 py-4 hover:bg-surface-container transition-all">
+                    <Link to="/dashboard" className="text-on-surface/70 flex items-center px-6 py-4 hover:bg-surface-container transition-all">
                         <span className="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
                         <span>Dashboard</span>
                     </Link>

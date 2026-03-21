@@ -33,7 +33,7 @@ const Investigator = () => {
                     </div>
                 </div>
                 <nav className="flex-1 space-y-1">
-                    <Link to="/" className="text-on-surface/70 dark:text-slate-400 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold">
+                    <Link to="/dashboard" className="text-on-surface/70 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold">
                         <span className="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
                         Dashboard
                     </Link>
@@ -41,19 +41,19 @@ const Investigator = () => {
                         <span className="material-symbols-outlined mr-4" data-icon="security">security</span>
                         Investigations
                     </Link>
-                    <a className="text-on-surface/70 dark:text-slate-400 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold" href="#">
+                    <a className="text-on-surface/70 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold" href="#">
                         <span className="material-symbols-outlined mr-4" data-icon="warning">warning</span>
                         Alerts
                     </a>
-                    <a className="text-on-surface/70 dark:text-slate-400 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold" href="#">
+                    <a className="text-on-surface/70 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold" href="#">
                         <span className="material-symbols-outlined mr-4" data-icon="payments">payments</span>
                         Transactions
                     </a>
-                    <Link to="/reports" className="text-on-surface/70 dark:text-slate-400 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold">
+                    <Link to="/reports" className="text-on-surface/70 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold">
                         <span className="material-symbols-outlined mr-4" data-icon="analytics">analytics</span>
                         Reports
                     </Link>
-                    <a className="text-on-surface/70 dark:text-slate-400 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold" href="#">
+                    <a className="text-on-surface/70 flex items-center px-6 py-4 hover:bg-surface-container transition-all font-manrope text-xs uppercase tracking-widest font-bold" href="#">
                         <span className="material-symbols-outlined mr-4" data-icon="settings">settings</span>
                         Settings
                     </a>
