@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:5.18.0
+    container_name: traceify-neo4j
+    ports:
+      - "7474:7474"   # HTTP browser
+      - "7687:7687"   # Bolt
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  client-web:
+    build: 
+      context: ./client-web
+      dockerfile: Dockerfile
+    container_name: traceify-web
+    ports:
+      - "3000:3000"
