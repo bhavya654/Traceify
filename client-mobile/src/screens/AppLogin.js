@@ -6,7 +6,10 @@ import {
   SafeAreaView, 
   TouchableOpacity, 
   Dimensions, 
-  Platform
+  Platform,
+  TextInput,
+  KeyboardAvoidingView,
+  ScrollView
 } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -15,26 +18,6 @@ const AppLogin = ({ navigation }) => {
   const [step, setStep] = useState('phone'); // 'phone' or 'otp'
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
-
-  const handleKeyPress = (val) => {
-    if (step === 'phone') {
-      if (val === 'delete') {
-        setPhoneNumber(prev => prev.slice(0, -1));
-      } else {
-        if (phoneNumber.length < 10) {
-          setPhoneNumber(prev => prev + val);
-        }
-      }
-    } else if (step === 'otp') {
-      if (val === 'delete') {
-        setOtp(prev => prev.slice(0, -1));
-      } else {
-        if (otp.length < 4) {
-          setOtp(prev => prev + val);
-        }
-      }
-    }
-  };
 
   const handleSendOTP = () => {
     if (phoneNumber.length === 10) {
@@ -63,157 +46,136 @@ const AppLogin = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        
-        {/* Header - Logo */}
-        <View style={styles.header}>
-          <Text style={styles.logoIcon}>🛡️</Text>
-          <Text style={styles.logoText}>VELOCITY</Text>
-          <View style={styles.helpIconContainer}>
-            <Text style={styles.helpIcon}>?</Text>
-          </View>
-        </View>
-
-        {/* Greeting Section */}
-        <View style={styles.greetingSection}>
-          <Text style={styles.title}>Welcome to your</Text>
-          <Text style={styles.titleHighlight}>digital vault.</Text>
-          <Text style={styles.subtitle}>
-            {step === 'phone' 
-              ? "Enter your mobile number to securely access your accounts." 
-              : `Enter the 4-digit code sent to +91 ${formatPhoneNumber(phoneNumber)}`}
-          </Text>
-        </View>
-
-        {/* Card Section */}
-        <View style={styles.card}>
-          {step === 'phone' ? (
-            <>
-              <Text style={styles.inputLabel}>MOBILE NUMBER</Text>
-              
-              <View style={styles.inputContainer}>
-                <TouchableOpacity style={styles.countryCodePicker}>
-                  <Text style={styles.countryCodeText}>+91</Text>
-                  <Text style={styles.chevronIcon}>⌄</Text>
-                </TouchableOpacity>
-                
-                <View style={styles.numberInput}>
-                  <Text style={[styles.numberInputText, !phoneNumber && styles.placeholderText]}>
-                    {formatPhoneNumber(phoneNumber)}
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.button, phoneNumber.length === 10 ? styles.buttonActive : styles.buttonInactive]} 
-                onPress={handleSendOTP}
-                disabled={phoneNumber.length !== 10}
-              >
-                <Text style={styles.buttonText}>Send OTP</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={styles.inputLabel}>VERIFICATION CODE (OTP)</Text>
-              
-              <View style={styles.otpContainer}>
-                {[0, 1, 2, 3].map((index) => (
-                  <View key={index} style={[styles.otpInputBox, otp.length === index && styles.otpInputBoxActive]}>
-                    <Text style={styles.otpInputText}>{otp[index] || ''}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.button, otp.length === 4 ? styles.buttonActive : styles.buttonInactive]} 
-                onPress={handleVerifyOTP}
-                disabled={otp.length !== 4}
-              >
-                <Text style={styles.buttonText}>Verify & Login</Text>
-              </TouchableOpacity>
-
-              <View style={styles.resendContainer}>
-                <Text style={styles.signupText}>Didn't receive code? </Text>
-                <TouchableOpacity onPress={() => { setOtp(''); setStep('phone'); }}>
-                  <Text style={styles.signupLinkText}>Change Number</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-
-          {step === 'phone' && (
-            <>
-              <TouchableOpacity style={styles.secondaryLink}>
-                <Text style={styles.secondaryLinkText}>Login with Email or ID</Text>
-              </TouchableOpacity>
-
-              <View style={styles.signupContainer}>
-                <Text style={styles.signupText}>Don't have an account? </Text>
-                <TouchableOpacity onPress={() => navigation.navigate('AppSignup')}>
-                  <Text style={styles.signupLinkText}>Sign Up</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* Security Badge */}
-        <View style={styles.securityBadge}>
-          <Text style={styles.securityIcon}>🔒</Text>
-          <Text style={styles.securityText}>BANK-LEVEL SECURITY</Text>
-        </View>
-
-        {/* Custom Keypad */}
-        <View style={styles.keypadContainer}>
-          {[
-            ['1', '2', '3'],
-            ['4', '5', '6'],
-            ['7', '8', '9'],
-            ['', '0', 'delete']
-          ].map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.keypadRow}>
-              {row.map((key) => {
-                if (key === '') {
-                  return <View key={`empty-${rowIndex}`} style={styles.keypadButton} />;
-                }
-                if (key === 'delete') {
-                  return (
-                    <TouchableOpacity 
-                      key={key} 
-                      style={styles.keypadButton} 
-                      onPress={() => handleKeyPress('delete')}
-                    >
-                      <View style={styles.deleteIconBox}>
-                        <Text style={styles.deleteIconText}>⌫</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }
-                // Determine letters
-                const lettersMap = {
-                  '2': 'ABC', '3': 'DEF',
-                  '4': 'GHI', '5': 'JKL', '6': 'MNO',
-                  '7': 'PQRS', '8': 'TUV', '9': 'WXYZ'
-                };
-                
-                return (
-                  <TouchableOpacity 
-                    key={key} 
-                    style={styles.keypadButton} 
-                    onPress={() => handleKeyPress(key)}
-                  >
-                    <Text style={styles.keypadNumber}>{key}</Text>
-                    {lettersMap[key] && (
-                      <Text style={styles.keypadLetters}>{lettersMap[key]}</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          
+          {/* Header - Logo */}
+          <View style={styles.header}>
+            <Text style={styles.logoIcon}>🛡️</Text>
+            <Text style={styles.logoText}>VELOCITY</Text>
+            <View style={styles.helpIconContainer}>
+              <Text style={styles.helpIcon}>?</Text>
             </View>
-          ))}
-        </View>
+          </View>
 
-      </View>
+          {/* Greeting Section */}
+          <View style={styles.greetingSection}>
+            <Text style={styles.title}>Welcome to your</Text>
+            <Text style={styles.titleHighlight}>digital vault.</Text>
+            <Text style={styles.subtitle}>
+              {step === 'phone' 
+                ? "Enter your mobile number to securely access your accounts." 
+                : `Enter the 4-digit code sent to +91 ${formatPhoneNumber(phoneNumber)}`}
+            </Text>
+          </View>
+
+          {/* Card Section */}
+          <View style={styles.card}>
+            {step === 'phone' ? (
+              <>
+                <Text style={styles.inputLabel}>MOBILE NUMBER</Text>
+                
+                <View style={styles.inputContainer}>
+                  <TouchableOpacity style={styles.countryCodePicker}>
+                    <Text style={styles.countryCodeText}>+91</Text>
+                    <Text style={styles.chevronIcon}>⌄</Text>
+                  </TouchableOpacity>
+                  
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={[styles.numberInput, styles.numberInputText]}
+                      value={phoneNumber ? formatPhoneNumber(phoneNumber) : ''}
+                      onChangeText={(text) => {
+                        const numeric = text.replace(/[^0-9]/g, '');
+                        if (numeric.length <= 10) setPhoneNumber(numeric);
+                      }}
+                      placeholder="000 000 0000"
+                      placeholderTextColor="#B0B8C1"
+                      keyboardType="phone-pad"
+                      maxLength={12}
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity 
+                  style={[styles.button, phoneNumber.length === 10 ? styles.buttonActive : styles.buttonInactive]} 
+                  onPress={handleSendOTP}
+                  disabled={phoneNumber.length !== 10}
+                >
+                  <Text style={styles.buttonText}>Send OTP</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.inputLabel}>VERIFICATION CODE (OTP)</Text>
+                
+                <View style={styles.otpContainer}>
+                  {[0, 1, 2, 3].map((index) => (
+                    <View key={index} style={[styles.otpInputBox, otp.length === index && styles.otpInputBoxActive]}>
+                      <Text style={styles.otpInputText}>{otp[index] || ''}</Text>
+                    </View>
+                  ))}
+                  <TextInput
+                    style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0 }}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    value={otp}
+                    onChangeText={(text) => {
+                      const numeric = text.replace(/[^0-9]/g, '');
+                      setOtp(numeric);
+                    }}
+                    caretHidden={true}
+                  />
+                </View>
+
+                <TouchableOpacity 
+                  style={[styles.button, otp.length === 4 ? styles.buttonActive : styles.buttonInactive]} 
+                  onPress={handleVerifyOTP}
+                  disabled={otp.length !== 4}
+                >
+                  <Text style={styles.buttonText}>Verify & Login</Text>
+                </TouchableOpacity>
+
+                <View style={styles.resendContainer}>
+                  <Text style={styles.signupText}>Didn't receive code? </Text>
+                  <TouchableOpacity onPress={() => { setOtp(''); setStep('phone'); }}>
+                    <Text style={styles.signupLinkText}>Change Number</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {step === 'phone' && (
+              <>
+                <TouchableOpacity style={styles.secondaryLink}>
+                  <Text style={styles.secondaryLinkText}>Login with Email or ID</Text>
+                </TouchableOpacity>
+
+                <View style={styles.signupContainer}>
+                  <Text style={styles.signupText}>Don't have an account? </Text>
+                  <TouchableOpacity onPress={() => navigation.navigate('AppSignup')}>
+                    <Text style={styles.signupLinkText}>Sign Up</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* Security Badge */}
+          <View style={styles.securityBadge}>
+            <Text style={styles.securityIcon}>🔒</Text>
+            <Text style={styles.securityText}>BANK-LEVEL SECURITY</Text>
+          </View>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -224,7 +186,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7F9FB', // Light snowy grey background based on image
   },
   container: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 24,
   },
   header: {
@@ -422,41 +384,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0D7F41', // Dark green color matching image
     letterSpacing: 0.5,
-  },
-  keypadContainer: {
-    paddingBottom: Platform.OS === 'ios' ? 20 : 40,
-    marginTop: 20,
-  },
-  keypadRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 20,
-  },
-  keypadButton: {
-    width: width / 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 60,
-  },
-  keypadNumber: {
-    fontSize: 28,
-    fontWeight: '600',
-    color: '#1A1A1A',
-  },
-  keypadLetters: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#8A94A6',
-    marginTop: 2,
-    letterSpacing: 1,
-  },
-  deleteIconBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteIconText: {
-    fontSize: 24,
-    color: '#1A1A1A',
   }
 });
 
