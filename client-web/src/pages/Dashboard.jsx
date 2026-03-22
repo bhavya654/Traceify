@@ -10,7 +10,7 @@ const Dashboard = () => {
     const [selectedAccount, setSelectedAccount] = useState(null);
     const [newAlertIds, setNewAlertIds] = useState(new Set());
     const [lastUpdate, setLastUpdate] = useState(null);
-    const { graphData, fraudAlert, loading } = useGraph(selectedAccount);
+    const { graphData, loading } = useGraph();
     const intervalRef = useRef(null);
     const prevAlertIdsRef = useRef(new Set());
 
@@ -267,10 +267,13 @@ const Dashboard = () => {
               <section className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 {/* Network Graph (Large) */}
                 <div className="lg:col-span-2 bg-surface-container-lowest p-10 shadow-[0_4px_24px_-12px_rgba(0,0,0,0.08)] flex flex-col">
-                  <div className="flex justify-between items-center mb-10">
+                  <div className="flex justify-between items-center mb-6">
                     <div>
-                      <h3 className="text-xl font-bold tracking-tight mb-1">{selectedAccount ? "Transaction Network" : "Select an Alert to View Network"}</h3>
-                      <p className="text-xs text-on-surface-variant font-medium">{selectedAccount ? `Visualizing: ${selectedAccount}` : "Click 'Investigate' on an alert below"}</p>
+                      <h3 className="text-xl font-bold tracking-tight mb-1">Transaction Network</h3>
+                      <p className="text-xs text-on-surface-variant font-medium">
+                        Live network from Neo4j • <span className="text-error font-bold">Red edges = Fraud</span>
+                        {selectedAccount && <span className="text-primary ml-2">• Highlighting: {selectedAccount}</span>}
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <button className="px-3 py-1 text-[10px] font-bold bg-surface-container rounded uppercase">Hourly</button>
@@ -278,19 +281,10 @@ const Dashboard = () => {
                     </div>
                   </div>
                   
-                  {selectedAccount ? (
-                    <div className="h-[400px] w-full relative border border-outline-variant/20 rounded-lg overflow-hidden flex items-center justify-center bg-surface-container-lowest">
-                      <GraphView data={graphData} />
-                      {loading && <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-surface-container/80 text-on-surface px-4 py-2 rounded shadow-lg backdrop-blur text-xs font-bold uppercase tracking-widest">Building Network...</div>}
-                    </div>
-                  ) : (
-                    <div className="h-[400px] w-full relative flex items-center justify-center bg-surface-container-low rounded-lg">
-                      <div className="text-center">
-                        <span className="material-symbols-outlined text-6xl text-on-surface-variant/30 mb-4">hub</span>
-                        <p className="text-sm text-on-surface-variant">Select an alert to visualize the transaction network</p>
-                      </div>
-                    </div>
-                  )}
+                  <div className="h-[400px] w-full relative border border-outline-variant/20 rounded-lg overflow-hidden flex items-center justify-center bg-surface-container-lowest">
+                    <GraphView data={graphData} highlightAccount={selectedAccount} />
+                    {loading && <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-surface-container/80 text-on-surface px-4 py-2 rounded shadow-lg backdrop-blur text-xs font-bold uppercase tracking-widest">Loading Network...</div>}
+                  </div>
                 </div>
 
                 {/* Risk Distribution Donut */}

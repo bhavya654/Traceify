@@ -12,6 +12,10 @@ export const fetchGraphData = (accountId) => {
     return api.get(`/graph/${accountId}`);
 };
 
+export const fetchFullNetworkGraph = () => {
+    return api.get('/graph/full/network');
+};
+
 export const fetchFraudDetection = (accountId) => {
     return api.get(`/detect/${accountId}`);
 };
