@@ -1,30 +1,91 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import GraphView from '../components/GraphView';
 import { useGraph } from '../hooks/useGraph';
-import { fetchAlertsFeed } from '../services/api';
+import { fetchAlertsFeed, fetchDashboardStats } from '../services/api';
 
 const Dashboard = () => {
     const [alerts, setAlerts] = useState([]);
+    const [stats, setStats] = useState(null);
     const [selectedAccount, setSelectedAccount] = useState(null);
+    const [newAlertIds, setNewAlertIds] = useState(new Set());
+    const [lastUpdate, setLastUpdate] = useState(null);
     const { graphData, fraudAlert, loading } = useGraph(selectedAccount);
+    const intervalRef = useRef(null);
+    const prevAlertIdsRef = useRef(new Set());
 
     useEffect(() => {
-        const fetchAlerts = async () => {
+        const fetchData = async () => {
             try {
-                const res = await fetchAlertsFeed();
-                if (res.data) setAlerts(res.data);
-                if (!selectedAccount && res.data.length > 0) {
-                    setSelectedAccount(res.data[0].from);
+                // Fetch alerts
+                const alertsRes = await fetchAlertsFeed();
+                if (alertsRes.data) {
+                    // Detect new alerts for highlighting
+                    const currentIds = new Set(alertsRes.data.map(a => a.txn_id || a.id));
+                    const newIds = new Set();
+                    currentIds.forEach(id => {
+                        if (!prevAlertIdsRef.current.has(id)) {
+                            newIds.add(id);
+                        }
+                    });
+                    
+                    if (newIds.size > 0 && prevAlertIdsRef.current.size > 0) {
+                        setNewAlertIds(newIds);
+                        // Clear highlight after 3 seconds
+                        setTimeout(() => setNewAlertIds(new Set()), 3000);
+                    }
+                    
+                    prevAlertIdsRef.current = currentIds;
+                    setAlerts(alertsRes.data);
+                    setLastUpdate(new Date());
+                    
+                    // Set default selected account only on first load
+                    if (!selectedAccount && alertsRes.data.length > 0) {
+                        setSelectedAccount(alertsRes.data[0].from || alertsRes.data[0].account);
+                    }
+                }
+
+                // Fetch dashboard stats
+                const statsRes = await fetchDashboardStats();
+                if (statsRes.data) {
+                    setStats(statsRes.data);
                 }
             } catch (err) {
-                console.error("Failed to fetch alerts feed", err);
+                console.error("Failed to fetch data", err);
             }
         };
-        fetchAlerts();
-        const interval = setInterval(fetchAlerts, 3000);
-        return () => clearInterval(interval);
-    }, [selectedAccount]);
+
+        fetchData();
+        // Poll every 2 seconds for more real-time feel
+        intervalRef.current = setInterval(fetchData, 2000);
+
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+        };
+    }, []);
+
+    // Calculate metrics from real data
+    const totalAlerts = stats?.total_transactions || alerts.length || 0;
+    const flaggedAccounts = stats?.flagged_accounts || 0;
+    // risk_score from API is 0-1, convert to percentage for display
+    const highSeverityAlerts = stats?.high_severity_alerts || alerts.filter(a => (a.risk_score || 0) > 0.75).length || 0;
+    const criticalAlerts = stats?.critical_alerts || alerts.filter(a => (a.risk_score || 0) > 0.90).length || 0;
+    const activeCases = stats?.active_cases || alerts.length || 0;
+    const weeklyChangePct = stats?.weekly_change_pct || 0;
+    
+    // Risk distribution
+    const riskDistribution = stats?.risk_distribution || {
+        low: 0,
+        medium: 0,
+        high: 0,
+        critical: 0,
+    };
+    const totalRisk = riskDistribution.low + riskDistribution.medium + riskDistribution.high + riskDistribution.critical || 1;
+    const lowPct = Math.round((riskDistribution.low / totalRisk) * 100);
+    const mediumPct = Math.round((riskDistribution.medium / totalRisk) * 100);
+    const criticalPct = Math.round(((riskDistribution.high + riskDistribution.critical) / totalRisk) * 100);
 
     return (
         <div className="bg-surface text-on-surface selection:bg-primary-container selection:text-on-primary-container min-h-screen">
@@ -127,7 +188,7 @@ const Dashboard = () => {
                 <div className="flex gap-3">
                   <div className="bg-surface-container px-4 py-2 rounded-lg flex items-center gap-3">
                     <span className="material-symbols-outlined text-sm text-on-surface-variant" data-icon="calendar_today">calendar_today</span>
-                    <span className="text-sm font-medium text-on-surface">Oct 24, 2023 - Oct 31, 2023</span>
+                    <span className="text-sm font-medium text-on-surface">Real-time</span>
                   </div>
                   <button className="bg-surface-container-highest px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
                     <span className="material-symbols-outlined text-sm" data-icon="filter_list">filter_list</span>
@@ -141,13 +202,15 @@ const Dashboard = () => {
                 <div className="bg-surface-container-lowest p-8 flex flex-col justify-between min-h-[160px] shadow-[0_4px_24px_-12px_rgba(0,0,0,0.08)]">
                   <div>
                     <div className="flex justify-between items-start mb-4">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Total Transactions</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Total Alerts</span>
                       <span className="material-symbols-outlined text-primary/40" data-icon="payments">payments</span>
                     </div>
-                    <div className="text-3xl font-bold tracking-tight">1.28M</div>
+                    <div className="text-3xl font-bold tracking-tight">{totalAlerts.toLocaleString()}</div>
                   </div>
                   <div className="mt-4 flex items-center gap-2">
-                    <span className="text-xs font-bold text-primary">+12.4%</span>
+                    <span className={`text-xs font-bold ${weeklyChangePct >= 0 ? 'text-primary' : 'text-error'}`}>
+                      {weeklyChangePct >= 0 ? '+' : ''}{weeklyChangePct}%
+                    </span>
                     <span className="text-[10px] text-on-surface-variant font-medium">vs last week</span>
                   </div>
                 </div>
@@ -155,14 +218,14 @@ const Dashboard = () => {
                 <div className="bg-surface-container-lowest p-8 flex flex-col justify-between min-h-[160px] shadow-[0_4px_24px_-12px_rgba(0,0,0,0.08)]">
                   <div>
                     <div className="flex justify-between items-start mb-4">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Fraudulent Accounts</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Flagged Accounts</span>
                       <span className="material-symbols-outlined text-tertiary/40" data-icon="group_work">group_work</span>
                     </div>
-                    <div className="text-3xl font-bold tracking-tight">4,812</div>
+                    <div className="text-3xl font-bold tracking-tight">{flaggedAccounts.toLocaleString()}</div>
                   </div>
                   <div className="mt-4 flex items-center gap-2">
-                    <span className="text-xs font-bold text-tertiary">+3.1%</span>
-                    <span className="text-[10px] text-on-surface-variant font-medium">high velocity increase</span>
+                    <span className="text-xs font-bold text-tertiary">Active</span>
+                    <span className="text-[10px] text-on-surface-variant font-medium">unique accounts</span>
                   </div>
                 </div>
 
@@ -172,14 +235,14 @@ const Dashboard = () => {
                       <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">High Severity Alerts</span>
                       <span className="material-symbols-outlined text-error/40" data-icon="emergency_home">emergency_home</span>
                     </div>
-                    <div className="text-3xl font-bold tracking-tight text-error">{alerts.length > 0 ? alerts.filter(a => a.risk_score > 75).length : 128}</div>
+                    <div className="text-3xl font-bold tracking-tight text-error">{highSeverityAlerts}</div>
                   </div>
                   <div className="mt-4 flex items-center gap-2">
                     <div className="flex -space-x-1">
                       <div className="w-4 h-4 rounded-full bg-error ring-2 ring-surface"></div>
                       <div className="w-4 h-4 rounded-full bg-error opacity-60 ring-2 ring-surface"></div>
                     </div>
-                    <span className="text-[10px] text-error font-bold">{alerts.length > 0 ? alerts.filter(a => a.risk_score > 75).length : 12} CRITICAL</span>
+                    <span className="text-[10px] text-error font-bold">{criticalAlerts} CRITICAL</span>
                   </div>
                 </div>
 
@@ -189,13 +252,13 @@ const Dashboard = () => {
                       <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Active Cases</span>
                       <span className="material-symbols-outlined text-primary/40" data-icon="search_insights">search_insights</span>
                     </div>
-                    <div className="text-3xl font-bold tracking-tight">{alerts.length || 34}</div>
+                    <div className="text-3xl font-bold tracking-tight">{activeCases}</div>
                   </div>
                   <div className="mt-4 flex items-center gap-2">
                     <div className="w-full bg-surface-container h-1 rounded-full overflow-hidden">
-                      <div className="bg-primary h-full w-[65%]"></div>
+                      <div className="bg-primary h-full" style={{ width: `${Math.min(100, (activeCases / Math.max(totalAlerts, 1)) * 100)}%` }}></div>
                     </div>
-                    <span className="text-[10px] text-on-surface-variant font-bold whitespace-nowrap">65% CAP</span>
+                    <span className="text-[10px] text-on-surface-variant font-bold whitespace-nowrap">OPEN</span>
                   </div>
                 </div>
               </section>
@@ -206,8 +269,8 @@ const Dashboard = () => {
                 <div className="lg:col-span-2 bg-surface-container-lowest p-10 shadow-[0_4px_24px_-12px_rgba(0,0,0,0.08)] flex flex-col">
                   <div className="flex justify-between items-center mb-10">
                     <div>
-                      <h3 className="text-xl font-bold tracking-tight mb-1">{selectedAccount ? "Transaction Network" : "Transaction Volume"}</h3>
-                      <p className="text-xs text-on-surface-variant font-medium">{selectedAccount ? "Visualizing transaction flows and relationships" : "Temporal flow of cross-border data nodes"}</p>
+                      <h3 className="text-xl font-bold tracking-tight mb-1">{selectedAccount ? "Transaction Network" : "Select an Alert to View Network"}</h3>
+                      <p className="text-xs text-on-surface-variant font-medium">{selectedAccount ? `Visualizing: ${selectedAccount}` : "Click 'Investigate' on an alert below"}</p>
                     </div>
                     <div className="flex gap-2">
                       <button className="px-3 py-1 text-[10px] font-bold bg-surface-container rounded uppercase">Hourly</button>
@@ -221,22 +284,10 @@ const Dashboard = () => {
                       {loading && <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-surface-container/80 text-on-surface px-4 py-2 rounded shadow-lg backdrop-blur text-xs font-bold uppercase tracking-widest">Building Network...</div>}
                     </div>
                   ) : (
-                    <div className="h-[400px] w-full relative">
-                      <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 400">
-                        <defs>
-                          <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-                            <stop offset="0%" stopColor="#3525CD" stopOpacity="0.2"></stop>
-                            <stop offset="100%" stopColor="#3525CD" stopOpacity="0"></stop>
-                          </linearGradient>
-                        </defs>
-                        <line stroke="#ECEEF0" strokeDasharray="4" x1="0" x2="800" y1="100" y2="100"></line>
-                        <line stroke="#ECEEF0" strokeDasharray="4" x1="0" x2="800" y1="200" y2="200"></line>
-                        <line stroke="#ECEEF0" strokeDasharray="4" x1="0" x2="800" y1="300" y2="300"></line>
-                        <path d="M0,360 Q100,320 200,280 T400,300 T600,160 T800,80 L800,400 L0,400 Z" fill="url(#chartGradient)"></path>
-                        <path d="M0,360 Q100,320 200,280 T400,300 T600,160 T800,80" fill="none" stroke="#3525CD" strokeLinecap="round" strokeWidth="3"></path>
-                      </svg>
-                      <div className="flex justify-between mt-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                    <div className="h-[400px] w-full relative flex items-center justify-center bg-surface-container-low rounded-lg">
+                      <div className="text-center">
+                        <span className="material-symbols-outlined text-6xl text-on-surface-variant/30 mb-4">hub</span>
+                        <p className="text-sm text-on-surface-variant">Select an alert to visualize the transaction network</p>
                       </div>
                     </div>
                   )}
@@ -244,19 +295,19 @@ const Dashboard = () => {
 
                 {/* Risk Distribution Donut */}
                 <div className="bg-surface-container-lowest p-10 shadow-[0_4px_24px_-12px_rgba(0,0,0,0.08)]">
-                  <h3 className="text-xl font-bold tracking-tight mb-1">Fraud Risk Distribution</h3>
-                  <p className="text-xs text-on-surface-variant font-medium mb-10">Assessment of potential fraud risk</p>
+                  <h3 className="text-xl font-bold tracking-tight mb-1">Risk Distribution</h3>
+                  <p className="text-xs text-on-surface-variant font-medium mb-10">Assessment of alert risk levels</p>
                   <div className="flex flex-col items-center">
                     <div className="relative w-48 h-48 mb-10">
                       <svg className="w-full h-full" viewBox="0 0 36 36">
                         <circle cx="18" cy="18" fill="none" r="16" stroke="#ECEEF0" strokeWidth="4"></circle>
-                        <circle cx="18" cy="18" fill="none" r="16" stroke="#3525CD" strokeDasharray="70, 100" strokeLinecap="round" strokeWidth="4" transform="rotate(-90 18 18)"></circle>
-                        <circle cx="18" cy="18" fill="none" r="16" stroke="#B6B4FF" strokeDasharray="20, 100" strokeDashoffset="-70" strokeLinecap="round" strokeWidth="4" transform="rotate(-90 18 18)"></circle>
-                        <circle cx="18" cy="18" fill="none" r="16" stroke="#BA1A1A" strokeDasharray="10, 100" strokeDashoffset="-90" strokeLinecap="round" strokeWidth="4" transform="rotate(-90 18 18)"></circle>
+                        <circle cx="18" cy="18" fill="none" r="16" stroke="#3525CD" strokeDasharray={`${lowPct}, 100`} strokeLinecap="round" strokeWidth="4" transform="rotate(-90 18 18)"></circle>
+                        <circle cx="18" cy="18" fill="none" r="16" stroke="#B6B4FF" strokeDasharray={`${mediumPct}, 100`} strokeDashoffset={`-${lowPct}`} strokeLinecap="round" strokeWidth="4" transform="rotate(-90 18 18)"></circle>
+                        <circle cx="18" cy="18" fill="none" r="16" stroke="#BA1A1A" strokeDasharray={`${criticalPct}, 100`} strokeDashoffset={`-${lowPct + mediumPct}`} strokeLinecap="round" strokeWidth="4" transform="rotate(-90 18 18)"></circle>
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-3xl font-black text-on-surface">4.8k</span>
-                        <span className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant">Accounts</span>
+                        <span className="text-3xl font-black text-on-surface">{totalAlerts}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant">Alerts</span>
                       </div>
                     </div>
                     <div className="w-full space-y-3">
@@ -265,21 +316,21 @@ const Dashboard = () => {
                           <div className="w-2 h-2 rounded-full bg-primary"></div>
                           <span className="font-medium text-on-surface">Low Risk</span>
                         </div>
-                        <span className="font-bold">70%</span>
+                        <span className="font-bold">{lowPct}%</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full bg-secondary-container"></div>
                           <span className="font-medium text-on-surface">Medium Risk</span>
                         </div>
-                        <span className="font-bold">20%</span>
+                        <span className="font-bold">{mediumPct}%</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full bg-error"></div>
                           <span className="font-medium text-on-surface">Critical</span>
                         </div>
-                        <span className="font-bold">10%</span>
+                        <span className="font-bold">{criticalPct}%</span>
                       </div>
                     </div>
                   </div>
@@ -291,7 +342,16 @@ const Dashboard = () => {
                 <div className="flex justify-between items-end mb-10">
                   <div>
                     <h3 className="text-xl font-bold tracking-tight mb-1">Fraud Alert Feed</h3>
-                    <p className="text-xs text-on-surface-variant font-medium">Real-time critical alerts from the fraud detection engine</p>
+                    <p className="text-xs text-on-surface-variant font-medium">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                        </span>
+                        Live - {alerts.length} alerts
+                        {lastUpdate && <span className="text-on-surface-variant/50 ml-2">• Updated {lastUpdate.toLocaleTimeString()}</span>}
+                      </span>
+                    </p>
                   </div>
                   <a className="text-xs font-bold text-primary uppercase tracking-widest border-b border-primary/20 pb-1" href="#">Review All Events</a>
                 </div>
@@ -300,56 +360,91 @@ const Dashboard = () => {
                     <thead className="border-b border-outline-variant/10">
                       <tr className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
                         <th className="pb-4">Timestamp</th>
-                        <th className="pb-4">Entity ID</th>
-                        <th className="pb-4">Activity Type</th>
+                        <th className="pb-4">Txn ID</th>
+                        <th className="pb-4">Account</th>
+                        <th className="pb-4">Amount</th>
+                        <th className="pb-4">Type</th>
+                        <th className="pb-4">Level</th>
+                        <th className="pb-4">Status</th>
                         <th className="pb-4">Flag Reason</th>
                         <th className="pb-4">Risk Score</th>
                         <th className="pb-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant/5">
-                      {alerts.length > 0 ? alerts.map((a, i) => (
-                        <tr key={i} className={`group transition-colors ${a.from === selectedAccount ? 'bg-surface-container-high' : 'hover:bg-surface-container-low'}`}>
-                          <td className="py-6 text-xs font-medium text-on-surface">{new Date(a.timestamp).toLocaleString()}</td>
-                          <td className="py-6 font-mono text-xs font-bold text-primary">{a.from.substring(0, 16)}...</td>
-                          <td className="py-6">
-                            <span className={`${a.risk_score > 75 ? 'bg-error-container text-on-error-container' : 'bg-secondary-container text-on-secondary-container'} px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight`}>
-                              {a.risk_score > 75 ? 'Rapid Outflow' : 'Struct. Violation'}
+                      {alerts.length > 0 ? alerts.map((a, i) => {
+                        const alertId = a.txn_id || a.id;
+                        const isNew = newAlertIds.has(alertId);
+                        const isSelected = (a.from || a.account) === selectedAccount;
+                        return (
+                        <tr key={alertId || i} className={`group transition-all duration-500 ${isNew ? 'bg-primary/10 animate-pulse' : ''} ${isSelected ? 'bg-surface-container-high' : 'hover:bg-surface-container-low'}`}>
+                          <td className="py-4 text-xs font-medium text-on-surface whitespace-nowrap">
+                            {a.timestamp || a.created_at ? new Date(a.timestamp || a.created_at).toLocaleString() : 'N/A'}
+                          </td>
+                          <td className="py-4 font-mono text-[10px] text-on-surface-variant">
+                            {(a.txn_id || '').substring(0, 12)}{(a.txn_id || '').length > 12 ? '...' : ''}
+                          </td>
+                          <td className="py-4 font-mono text-xs font-bold text-primary">
+                            {(a.from || a.account || '').substring(0, 12)}{(a.from || a.account || '').length > 12 ? '...' : ''}
+                          </td>
+                          <td className="py-4 text-xs font-bold text-on-surface whitespace-nowrap">
+                            ${(a.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-4">
+                            {(() => {
+                              const riskPct = Math.round((a.risk_score || 0) * 100);
+                              return (
+                                <span className={`${riskPct > 75 ? 'bg-error-container text-on-error-container' : 'bg-secondary-container text-on-secondary-container'} px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight`}>
+                                  {a.type || a.alert_type || 'TXN'}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td className="py-4">
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight ${
+                              a.level === 'HIGH' ? 'bg-error-container text-on-error-container' : 
+                              a.level === 'MEDIUM' ? 'bg-tertiary-container text-on-tertiary-container' : 
+                              'bg-surface-container text-on-surface-variant'
+                            }`}>
+                              {a.level || 'N/A'}
                             </span>
                           </td>
-                          <td className="py-6 text-xs font-medium text-on-surface-variant max-w-sm truncate">
-                             {a.explanations && a.explanations.length > 0 ? a.explanations[0] : 'Anomalous volume/velocity detected.'}
+                          <td className="py-4">
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight ${
+                              a.status === 'OPEN' ? 'bg-primary-container text-on-primary-container' : 
+                              a.status === 'TRUE_POSITIVE' ? 'bg-error-container text-on-error-container' : 
+                              a.status === 'FALSE_POSITIVE' ? 'bg-surface-container text-on-surface-variant' : 
+                              'bg-surface-container text-on-surface-variant'
+                            }`}>
+                              {a.status || 'OPEN'}
+                            </span>
                           </td>
-                          <td className="py-6">
-                            <div className="flex items-center gap-2">
-                              <div className="w-12 bg-surface-container h-1.5 rounded-full">
-                                <div className={`${a.risk_score > 75 ? 'bg-error' : 'bg-primary'} h-full rounded-full`} style={{ width: `${a.risk_score}%` }}></div>
-                              </div>
-                              <span className="text-[10px] font-bold">{a.risk_score}/100</span>
-                            </div>
+                          <td className="py-4 text-xs font-medium text-on-surface-variant max-w-[200px] truncate" title={a.fail_reason || a.explanations?.[0] || ''}>
+                             {a.explanations && a.explanations.length > 0 ? a.explanations[0] : (a.fail_reason || 'Anomalous activity')}
                           </td>
-                          <td className="py-6 text-right">
-                            <button onClick={() => setSelectedAccount(a.from)} className="text-primary hover:underline font-bold text-[10px] uppercase tracking-widest">Investigate</button>
+                          <td className="py-4">
+                            {(() => {
+                              const riskPct = Math.round((a.risk_score || 0) * 100);
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-12 bg-surface-container h-1.5 rounded-full">
+                                    <div className={`${riskPct > 75 ? 'bg-error' : riskPct > 50 ? 'bg-tertiary' : 'bg-primary'} h-full rounded-full transition-all`} style={{ width: `${riskPct}%` }}></div>
+                                  </div>
+                                  <span className={`text-[10px] font-bold ${riskPct > 75 ? 'text-error' : ''}`}>{riskPct}</span>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="py-4 text-right">
+                            <button onClick={() => setSelectedAccount(a.from || a.account)} className="text-primary hover:underline font-bold text-[10px] uppercase tracking-widest">Investigate</button>
                           </td>
                         </tr>
-                      )) : (
-                        <tr className="group hover:bg-surface-container-low transition-colors">
-                          <td className="py-6 text-xs font-medium text-on-surface">2023-10-31 14:22:01</td>
-                          <td className="py-6 font-mono text-xs font-bold text-primary">WX-92831-P</td>
-                          <td className="py-6">
-                            <span className="bg-tertiary-fixed text-on-tertiary-fixed-variant px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Rapid Outflow</span>
-                          </td>
-                          <td className="py-6 text-xs font-medium text-on-surface-variant">Unusual withdrawal volume to high-risk wallet cluster.</td>
-                          <td className="py-6">
-                            <div className="flex items-center gap-2">
-                              <div className="w-12 bg-surface-container h-1.5 rounded-full">
-                                <div className="bg-primary h-full w-[94%] rounded-full"></div>
-                              </div>
-                              <span className="text-[10px] font-bold">94/100</span>
-                            </div>
-                          </td>
-                          <td className="py-6 text-right">
-                            <button className="text-primary hover:underline font-bold text-[10px] uppercase tracking-widest">Investigate</button>
+                        );
+                      }) : (
+                        <tr>
+                          <td colSpan="10" className="py-12 text-center text-on-surface-variant">
+                            <span className="material-symbols-outlined text-4xl mb-2 block">inbox</span>
+                            No alerts found. The system is monitoring for suspicious activity.
                           </td>
                         </tr>
                       )}

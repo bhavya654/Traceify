@@ -1,7 +1,72 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { fetchInvestigations, fetchAlertById, fetchTransactions, fetchFraudDetection } from '../services/api';
 
 const InvestigationWorkspace = () => {
+    const [searchParams] = useSearchParams();
+    const [investigations, setInvestigations] = useState([]);
+    const [selectedInvestigation, setSelectedInvestigation] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [fraudData, setFraudData] = useState(null);
+    const intervalRef = useRef(null);
+
+    // Fetch investigations list
+    useEffect(() => {
+        const loadInvestigations = async () => {
+            try {
+                const res = await fetchInvestigations(20);
+                if (res.data && res.data.length > 0) {
+                    setInvestigations(res.data);
+                    // Auto-select first investigation if none selected
+                    if (!selectedInvestigation) {
+                        setSelectedInvestigation(res.data[0]);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load investigations", err);
+            }
+        };
+
+        loadInvestigations();
+        intervalRef.current = setInterval(loadInvestigations, 5000);
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, []);
+
+    // Fetch details for selected investigation
+    useEffect(() => {
+        if (!selectedInvestigation?.account) return;
+
+        const loadDetails = async () => {
+            try {
+                const [txRes, fraudRes] = await Promise.all([
+                    fetchTransactions(selectedInvestigation.account),
+                    fetchFraudDetection(selectedInvestigation.account)
+                ]);
+                
+                if (txRes.data?.transactions) {
+                    setTransactions(txRes.data.transactions);
+                }
+                if (fraudRes.data?.data) {
+                    setFraudData(fraudRes.data.data);
+                }
+            } catch (err) {
+                console.error("Failed to load investigation details", err);
+            }
+        };
+
+        loadDetails();
+        const detailInterval = setInterval(loadDetails, 3000);
+        return () => clearInterval(detailInterval);
+    }, [selectedInvestigation?.account]);
+
+    const riskScore = selectedInvestigation?.risk_score || fraudData?.risk_score || 0;
+    const patterns = [];
+    if (riskScore > 75) patterns.push({ name: 'High Risk Activity', confidence: 94, type: 'error' });
+    if (selectedInvestigation?.alert_type === 'FAILURE_PATTERN') patterns.push({ name: 'Failure Pattern', confidence: 87, type: 'warning' });
+    if (transactions.some(t => t.sub_threshold)) patterns.push({ name: 'Sub-threshold Structuring', confidence: 82, type: 'warning' });
+
     return (
         <div className="bg-surface text-on-surface min-h-screen font-body">
             {/* SideNavBar (Shared Component) */}
@@ -87,7 +152,9 @@ const InvestigationWorkspace = () => {
                         <div className="flex justify-between items-end mb-4">
                             <div>
                                 <h2 className="text-3xl font-light tracking-tight text-on-background">TX Path Explorer</h2>
-                                <p className="text-label-sm uppercase tracking-widest text-on-surface-variant mt-1">Investigation #8292-X — Multi-hop attribution</p>
+                                <p className="text-label-sm uppercase tracking-widest text-on-surface-variant mt-1">
+                                    Investigation #{selectedInvestigation?.id || '—'} — {selectedInvestigation?.account || 'Select case'}
+                                </p>
                             </div>
                             <div className="flex gap-2">
                                 <button className="bg-surface-container-highest px-4 py-2 rounded text-xs font-bold uppercase tracking-wider">Export PDF</button>
@@ -97,20 +164,22 @@ const InvestigationWorkspace = () => {
 
                         {/* Transaction Flow Visualizer (Bento Grid Style) */}
                         <div className="grid grid-cols-3 gap-6">
-                            {/* Step 1 */}
+                            {/* Step 1 - Origin */}
                             <div className="bg-surface-container-lowest p-6 flex flex-col gap-8 group hover:shadow-xl transition-shadow border-b-2 border-transparent hover:border-primary/20">
                                 <div className="flex justify-between items-start">
                                     <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Origin</span>
                                     <span className="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors">account_balance_wallet</span>
                                 </div>
                                 <div>
-                                    <p className="text-2xl font-mono tracking-tighter text-on-background">0x71...F2D</p>
-                                    <p className="text-label-sm text-on-surface-variant mt-2">Verified: Kraken Exchange</p>
+                                    <p className="text-2xl font-mono tracking-tighter text-on-background">
+                                        {selectedInvestigation?.account ? selectedInvestigation.account.substring(0, 10) + '...' : '—'}
+                                    </p>
+                                    <p className="text-label-sm text-on-surface-variant mt-2">Target Account</p>
                                 </div>
                                 <div className="pt-4 border-t border-outline-variant/10">
                                     <div className="flex justify-between text-[11px]">
-                                        <span className="text-on-surface-variant">OUTBOUND</span>
-                                        <span className="font-bold">42.08 ETH</span>
+                                        <span className="text-on-surface-variant">TOTAL VOL</span>
+                                        <span className="font-bold">${fraudData?.total_amount?.toLocaleString() || '0'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -123,20 +192,28 @@ const InvestigationWorkspace = () => {
                                 </div>
                             </div>
 
-                            {/* Step 2 (Layering Phase) */}
-                            <div className="bg-surface-container-lowest p-6 flex flex-col gap-8 group hover:shadow-xl transition-shadow border-b-2 border-transparent hover:border-error/20">
+                            {/* Step 2 - Alert Info */}
+                            <div className={`bg-surface-container-lowest p-6 flex flex-col gap-8 group hover:shadow-xl transition-shadow border-b-2 border-transparent ${riskScore > 75 ? 'hover:border-error/20' : 'hover:border-primary/20'}`}>
                                 <div className="flex justify-between items-start">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-error">Intermediary</span>
-                                    <span className="material-symbols-outlined text-error">warning</span>
+                                    <span className={`text-[10px] font-bold uppercase tracking-widest ${riskScore > 75 ? 'text-error' : 'text-primary'}`}>
+                                        {riskScore > 75 ? 'High Risk' : 'Under Review'}
+                                    </span>
+                                    <span className={`material-symbols-outlined ${riskScore > 75 ? 'text-error' : 'text-primary'}`}>
+                                        {riskScore > 75 ? 'warning' : 'info'}
+                                    </span>
                                 </div>
                                 <div>
-                                    <p className="text-2xl font-mono tracking-tighter text-on-background">0x9C...4B1</p>
-                                    <p className="text-label-sm text-on-surface-variant mt-2">Unidentified Mixer Hub</p>
+                                    <p className="text-2xl font-mono tracking-tighter text-on-background">
+                                        {selectedInvestigation?.alert_type || 'TRANSACTION'}
+                                    </p>
+                                    <p className="text-label-sm text-on-surface-variant mt-2">
+                                        {selectedInvestigation?.fail_reason || 'Analyzing patterns...'}
+                                    </p>
                                 </div>
                                 <div className="pt-4 border-t border-outline-variant/10">
                                     <div className="flex justify-between text-[11px]">
-                                        <span className="text-on-surface-variant">HOPS</span>
-                                        <span className="font-bold">14 (Detected)</span>
+                                        <span className="text-on-surface-variant">RELATED</span>
+                                        <span className="font-bold">{selectedInvestigation?.related_alerts || 0} Alerts</span>
                                     </div>
                                 </div>
                             </div>
@@ -146,36 +223,29 @@ const InvestigationWorkspace = () => {
                         <div className="mt-4 bg-surface-container-lowest p-10 flex-1 overflow-auto custom-scrollbar">
                             <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant mb-8">Temporal Audit Log</h3>
                             <div className="space-y-6">
-                                <div className="flex items-center gap-10 group cursor-pointer">
-                                    <span className="text-[10px] font-mono text-on-surface-variant/60 w-32">2023-10-24 14:22:01</span>
-                                    <div className="h-2 w-2 rounded-full bg-primary ring-4 ring-primary/10"></div>
-                                    <div className="flex-1 grid grid-cols-4 items-center">
-                                        <span className="text-sm font-medium">Batch Transfer</span>
-                                        <span className="text-xs text-on-surface-variant">0.450 ETH</span>
-                                        <span className="text-xs font-mono text-outline">0x882...91a</span>
-                                        <span className="text-right"><span className="text-[10px] px-2 py-1 rounded bg-surface-container font-bold uppercase">Success</span></span>
+                                {transactions.length > 0 ? transactions.slice(0, 10).map((tx, idx) => (
+                                    <div key={tx.txn_id || idx} className="flex items-center gap-10 group cursor-pointer">
+                                        <span className="text-[10px] font-mono text-on-surface-variant/60 w-32">
+                                            {tx.timestamp ? new Date(tx.timestamp).toLocaleString() : 'N/A'}
+                                        </span>
+                                        <div className={`h-2 w-2 rounded-full ${tx.direction === 'outgoing' ? 'bg-error' : 'bg-primary'} ring-4 ${tx.direction === 'outgoing' ? 'ring-error/10' : 'ring-primary/10'}`}></div>
+                                        <div className="flex-1 grid grid-cols-4 items-center">
+                                            <span className="text-sm font-medium">{tx.direction === 'outgoing' ? 'Outbound' : 'Inbound'}</span>
+                                            <span className="text-xs text-on-surface-variant">${tx.amount?.toLocaleString() || '0'}</span>
+                                            <span className="text-xs font-mono text-outline truncate">{tx.txn_id || '—'}</span>
+                                            <span className="text-right">
+                                                <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${tx.sub_threshold ? 'bg-tertiary-fixed text-tertiary' : 'bg-surface-container'}`}>
+                                                    {tx.sub_threshold ? 'Flagged' : 'Success'}
+                                                </span>
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-10 group cursor-pointer">
-                                    <span className="text-[10px] font-mono text-on-surface-variant/60 w-32">2023-10-24 14:18:55</span>
-                                    <div className="h-2 w-2 rounded-full bg-tertiary ring-4 ring-tertiary/10"></div>
-                                    <div className="flex-1 grid grid-cols-4 items-center">
-                                        <span className="text-sm font-medium">Smart Contract Execution</span>
-                                        <span className="text-xs text-on-surface-variant">12.00 ETH</span>
-                                        <span className="text-xs font-mono text-outline">0x442...dd3</span>
-                                        <span className="text-right"><span className="text-[10px] px-2 py-1 rounded bg-tertiary-fixed text-tertiary font-bold uppercase">Flagged</span></span>
+                                )) : (
+                                    <div className="text-center py-8 text-on-surface-variant">
+                                        <span className="material-symbols-outlined text-4xl mb-2 block">history</span>
+                                        <p className="text-xs">No transaction history available</p>
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-10 group cursor-pointer opacity-50">
-                                    <span className="text-[10px] font-mono text-on-surface-variant/60 w-32">2023-10-24 14:05:12</span>
-                                    <div className="h-2 w-2 rounded-full bg-outline ring-4 ring-outline/10"></div>
-                                    <div className="flex-1 grid grid-cols-4 items-center">
-                                        <span className="text-sm font-medium">Balance Query</span>
-                                        <span className="text-xs text-on-surface-variant">--</span>
-                                        <span className="text-xs font-mono text-outline">0x112...00b</span>
-                                        <span className="text-right"><span className="text-[10px] px-2 py-1 rounded bg-surface-container font-bold uppercase">Audit</span></span>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                     </section>
@@ -187,70 +257,76 @@ const InvestigationWorkspace = () => {
                             <div className="relative z-10">
                                 <p className="text-label-sm uppercase tracking-widest opacity-70">AI Risk Assessment</p>
                                 <div className="mt-4 flex items-baseline gap-2">
-                                    <span className="text-7xl font-light tracking-tighter">89</span>
+                                    <span className="text-7xl font-light tracking-tighter">{Math.round(riskScore)}</span>
                                     <span className="text-xl font-medium opacity-50">/100</span>
                                 </div>
-                                <p className="mt-4 text-sm font-medium leading-relaxed">High probability of structured layering detected via neural path analysis.</p>
+                                <p className="mt-4 text-sm font-medium leading-relaxed">
+                                    {riskScore > 75 
+                                        ? 'High probability of suspicious activity detected via pattern analysis.'
+                                        : riskScore > 50
+                                        ? 'Moderate risk indicators present. Further investigation recommended.'
+                                        : 'Low risk profile. Standard monitoring applied.'}
+                                </p>
                             </div>
                             <div className="absolute top-0 right-0 w-64 h-64 bg-primary-container blur-[80px] -mr-32 -mt-32 opacity-40"></div>
                         </div>
 
-                        {/* Patterns Detected */}
-                        <div className="bg-surface-container-lowest p-8 rounded-xl flex-1 shadow-sm">
-                            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant mb-10">Detected Modalities</h3>
-                            <div className="space-y-10">
-                                <div className="flex gap-6">
-                                    <div className="p-3 bg-surface-container-low rounded-lg h-fit">
-                                        <span className="material-symbols-outlined text-primary">sync</span>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-bold text-on-background uppercase tracking-tight">Circular Attribution</h4>
-                                        <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">Funds returning to source address via 3 intermediary mixers. Confidence: 94%.</p>
-                                        <div className="mt-4 flex gap-2 w-full flex-wrap">
-                                            <span className="text-[9px] px-2 py-0.5 border border-outline-variant/30 text-on-surface-variant rounded">VELOCITY_HIGH</span>
-                                            <span className="text-[9px] px-2 py-0.5 border border-outline-variant/30 text-on-surface-variant rounded">RECURRING_TX</span>
+                        {/* Open Investigations List */}
+                        <div className="bg-surface-container-lowest p-6 rounded-xl shadow-sm">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant mb-4">Open Cases ({investigations.length})</h3>
+                            <div className="space-y-2 max-h-32 overflow-y-auto">
+                                {investigations.map((inv) => (
+                                    <button
+                                        key={inv.id}
+                                        onClick={() => setSelectedInvestigation(inv)}
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+                                            inv.id === selectedInvestigation?.id 
+                                                ? 'bg-primary/10 text-primary font-bold' 
+                                                : 'hover:bg-surface-container text-on-surface'
+                                        }`}
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <span className="truncate">{inv.account}</span>
+                                            <span className={`text-[10px] font-bold ${inv.risk_score > 75 ? 'text-error' : 'text-primary'}`}>
+                                                {Math.round(inv.risk_score)}
+                                            </span>
                                         </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-6">
-                                    <div className="p-3 bg-tertiary-fixed rounded-lg h-fit">
-                                        <span className="material-symbols-outlined text-tertiary">layers</span>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-bold text-on-background uppercase tracking-tight">Rapid Layering</h4>
-                                        <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">12 transactions under 0.1 ETH occurring within 300ms window across diverse chains.</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-6">
-                                    <div className="p-3 bg-error-container rounded-lg h-fit">
-                                        <span className="material-symbols-outlined text-error">grid_view</span>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-bold text-on-background uppercase tracking-tight">Structuring (Smurfing)</h4>
-                                        <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">Aggregated amounts stay 2% below AML reporting thresholds across all nodes.</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="mt-12 pt-8 border-t border-outline-variant/10">
-                                <a className="text-primary text-xs font-bold uppercase tracking-widest flex items-center justify-between group" href="#">
-                                    Generate Full Intel Report
-                                    <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_right_alt</span>
-                                </a>
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
-                        {/* Forensic Attachment Preview */}
-                        <div className="bg-surface-container p-6 rounded-xl flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <span className="material-symbols-outlined text-on-surface-variant">description</span>
-                                <div className="text-[10px]">
-                                    <p className="font-bold text-on-background">KRAKEN_W_EXPORT_92.CSV</p>
-                                    <p className="text-on-surface-variant">Attached Metadata — 2.4 MB</p>
-                                </div>
+                        {/* Patterns Detected */}
+                        <div className="bg-surface-container-lowest p-8 rounded-xl flex-1 shadow-sm">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant mb-10">Detected Patterns</h3>
+                            <div className="space-y-10">
+                                {patterns.length > 0 ? patterns.map((pattern, idx) => (
+                                    <div key={idx} className="flex gap-6">
+                                        <div className={`p-3 rounded-lg h-fit ${pattern.type === 'error' ? 'bg-error-container' : 'bg-tertiary-fixed'}`}>
+                                            <span className={`material-symbols-outlined ${pattern.type === 'error' ? 'text-error' : 'text-tertiary'}`}>
+                                                {pattern.type === 'error' ? 'warning' : 'info'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-on-background uppercase tracking-tight">{pattern.name}</h4>
+                                            <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">
+                                                Confidence: {pattern.confidence}%
+                                            </p>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="text-center py-8 text-on-surface-variant">
+                                        <span className="material-symbols-outlined text-4xl mb-2 block">shield</span>
+                                        <p className="text-xs">No specific patterns detected</p>
+                                    </div>
+                                )}
                             </div>
-                            <span className="material-symbols-outlined text-xs text-outline cursor-pointer hover:text-primary">download</span>
+                            <div className="mt-12 pt-8 border-t border-outline-variant/10">
+                                <Link to="/reports" className="text-primary text-xs font-bold uppercase tracking-widest flex items-center justify-between group">
+                                    Generate Full Intel Report
+                                    <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_right_alt</span>
+                                </Link>
+                            </div>
                         </div>
                     </section>
                 </div>

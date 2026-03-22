@@ -1,17 +1,66 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import GraphView from '../components/GraphView';
 import { useGraph } from '../hooks/useGraph';
+import { fetchAccounts, fetchTransactions } from '../services/api';
 
 const Investigator = () => {
+    const [searchParams] = useSearchParams();
     const [searchInput, setSearchInput] = useState('');
-    const [accountId, setAccountId] = useState('ACC1001'); // Default
+    const [accountId, setAccountId] = useState(searchParams.get('account') || null);
+    const [accounts, setAccounts] = useState([]);
+    const [transactions, setTransactions] = useState([]);
     const { graphData, fraudAlert, loading, error } = useGraph(accountId);
+    const intervalRef = useRef(null);
+
+    // Fetch accounts list on mount
+    useEffect(() => {
+        const loadAccounts = async () => {
+            try {
+                const res = await fetchAccounts(20);
+                if (res.data && res.data.length > 0) {
+                    setAccounts(res.data);
+                    // Set first account if none selected
+                    if (!accountId) {
+                        setAccountId(res.data[0].account);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load accounts", err);
+            }
+        };
+        loadAccounts();
+
+        intervalRef.current = setInterval(loadAccounts, 5000);
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, []);
+
+    // Fetch transactions for selected account
+    useEffect(() => {
+        if (!accountId) return;
+
+        const loadTransactions = async () => {
+            try {
+                const res = await fetchTransactions(accountId);
+                if (res.data && res.data.transactions) {
+                    setTransactions(res.data.transactions);
+                }
+            } catch (err) {
+                console.error("Failed to load transactions", err);
+            }
+        };
+        loadTransactions();
+
+        const txInterval = setInterval(loadTransactions, 3000);
+        return () => clearInterval(txInterval);
+    }, [accountId]);
 
     const handleSearch = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            if(searchInput.trim()) {
+            if (searchInput.trim()) {
                 setAccountId(searchInput.trim());
             }
         }
@@ -121,7 +170,9 @@ const Investigator = () => {
                     <div className="flex justify-between items-end">
                         <div>
                             <h2 className="text-3xl font-light tracking-tight text-on-surface">Active Fund Flow Tracking</h2>
-                            <p className="text-sm text-on-surface-variant/70 mt-1 uppercase tracking-widest font-medium">Case ID: #FRN-9821-XL-2023 | Target: {accountId}</p>
+                            <p className="text-sm text-on-surface-variant/70 mt-1 uppercase tracking-widest font-medium">
+                                {accountId ? `Target: ${accountId}` : 'Select an account to investigate'}
+                            </p>
                         </div>
                         <div className="flex gap-2">
                             <button className="px-4 py-2 bg-surface-container-high rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-surface-container-highest transition-colors">
@@ -147,6 +198,14 @@ const Investigator = () => {
                         {!loading && !error && graphData && (
                             <div className="absolute inset-0">
                                 <GraphView data={graphData} />
+                            </div>
+                        )}
+                        {!accountId && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="text-center">
+                                    <span className="material-symbols-outlined text-6xl text-on-surface-variant/30 mb-4">account_tree</span>
+                                    <p className="text-sm text-on-surface-variant">Select an account from the sidebar to view network</p>
+                                </div>
                             </div>
                         )}
 
@@ -192,7 +251,7 @@ const Investigator = () => {
                         <div className="flex items-start justify-between mb-8">
                             <div>
                                 <span className="text-[10px] uppercase tracking-[0.2em] font-black text-on-surface-variant/40">Entity Detail</span>
-                                <h3 className="text-xl font-bold text-on-surface mt-1">{accountId}</h3>
+                                <h3 className="text-xl font-bold text-on-surface mt-1">{accountId || 'No Account Selected'}</h3>
                             </div>
                             <div className={`w-12 h-12 rounded-full flex items-center justify-center ${fraudAlert?.risk_score > 75 ? 'bg-error-container/20' : 'bg-secondary-container/20'}`}>
                                 <span className={`material-symbols-outlined ${fraudAlert?.risk_score > 75 ? 'text-error' : 'text-primary'}`} data-icon="gavel">gavel</span>
@@ -201,72 +260,99 @@ const Investigator = () => {
                         <div className="grid grid-cols-2 gap-y-6 gap-x-4 mb-8">
                             <div>
                                 <p className="text-[10px] uppercase font-bold text-on-surface-variant/50 tracking-wider">Risk Score</p>
-                                <p className={`text-2xl font-light ${fraudAlert?.risk_score > 75 ? 'text-error' : 'text-primary'}`}>{fraudAlert ? fraudAlert.risk_score : '...'}<span className="text-sm font-bold">/100</span></p>
+                                <p className={`text-2xl font-light ${fraudAlert?.risk_score > 75 ? 'text-error' : 'text-primary'}`}>
+                                    {fraudAlert?.risk_score ? Math.round(fraudAlert.risk_score) : '—'}<span className="text-sm font-bold">/100</span>
+                                </p>
                             </div>
                             <div>
-                                <p className="text-[10px] uppercase font-bold text-on-surface-variant/50 tracking-wider">Entity Type</p>
-                                <p className="text-sm font-bold text-on-surface">Target Account</p>
+                                <p className="text-[10px] uppercase font-bold text-on-surface-variant/50 tracking-wider">Alert Count</p>
+                                <p className="text-sm font-bold text-on-surface">{fraudAlert?.alert_count || 0}</p>
                             </div>
                             <div>
                                 <p className="text-[10px] uppercase font-bold text-on-surface-variant/50 tracking-wider">Total Volume</p>
-                                <p className="text-sm font-bold text-on-surface">${fraudAlert?.amount ? fraudAlert.amount.toLocaleString() : '...'}</p>
+                                <p className="text-sm font-bold text-on-surface">
+                                    ${fraudAlert?.total_amount ? fraudAlert.total_amount.toLocaleString() : '0'}
+                                </p>
                             </div>
                             <div>
                                 <p className="text-[10px] uppercase font-bold text-on-surface-variant/50 tracking-wider">Status</p>
-                                <p className="text-sm font-bold text-on-surface uppercase">{fraudAlert?.risk_score > 75 ? 'Critical' : 'Monitoring'}</p>
+                                <p className="text-sm font-bold text-on-surface uppercase">
+                                    {fraudAlert?.status || (fraudAlert?.risk_score > 75 ? 'Critical' : 'Monitoring')}
+                                </p>
                             </div>
                         </div>
                         <div className="bg-surface p-4 rounded-lg">
                             <p className="text-[10px] uppercase font-black text-on-surface-variant mb-2">Primary Red Flag</p>
                             <p className="text-xs text-on-surface-variant leading-relaxed">
-                                {fraudAlert?.explanations && fraudAlert.explanations.length > 0 ? fraudAlert.explanations[0] : 'Scanning for anomalous activity signatures across the network graph...'}
+                                {fraudAlert?.reason || (fraudAlert?.explanations && fraudAlert.explanations.length > 0 ? fraudAlert.explanations[0] : 'No suspicious activity detected')}
                             </p>
                         </div>
                     </div>
 
+                    {/* Account List for Selection */}
+                    {accounts.length > 0 && (
+                        <div className="bg-surface-container-lowest p-6 rounded-xl shadow-sm">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-on-surface mb-4">Flagged Accounts</h4>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                                {accounts.map((acc) => (
+                                    <button
+                                        key={acc.account}
+                                        onClick={() => setAccountId(acc.account)}
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+                                            acc.account === accountId 
+                                                ? 'bg-primary/10 text-primary font-bold' 
+                                                : 'hover:bg-surface-container text-on-surface'
+                                        }`}
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-mono truncate">{acc.account}</span>
+                                            <span className={`text-[10px] font-bold ${acc.max_risk_score > 75 ? 'text-error' : 'text-primary'}`}>
+                                                {Math.round(acc.max_risk_score)}
+                                            </span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Transaction Audit Trail */}
                     <div className="bg-surface-container-lowest p-8 rounded-xl shadow-sm flex-1">
                         <div className="flex items-center justify-between mb-6">
-                            <h4 className="text-xs font-black uppercase tracking-widest text-on-surface">Audit Trail</h4>
-                            <span className="text-[10px] text-on-surface-variant/60">Showing last 24h</span>
+                            <h4 className="text-xs font-black uppercase tracking-widest text-on-surface">Transaction Trail</h4>
+                            <span className="text-[10px] text-on-surface-variant/60">{transactions.length} transactions</span>
                         </div>
                         
-                        <div className="space-y-6">
-                            <div className="flex gap-4 group">
-                                <div className="flex flex-col items-center">
-                                    <div className="w-2 h-2 rounded-full bg-error mb-1"></div>
-                                    <div className="w-px flex-1 bg-outline-variant/30"></div>
+                        <div className="space-y-4 max-h-80 overflow-y-auto">
+                            {transactions.length > 0 ? transactions.map((tx, idx) => (
+                                <div key={tx.txn_id || idx} className="flex gap-4 group">
+                                    <div className="flex flex-col items-center">
+                                        <div className={`w-2 h-2 rounded-full ${tx.direction === 'outgoing' ? 'bg-error' : 'bg-primary'} mb-1`}></div>
+                                        {idx < transactions.length - 1 && <div className="w-px flex-1 bg-outline-variant/30"></div>}
+                                    </div>
+                                    <div className="pb-4 flex-1">
+                                        <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase mb-1">
+                                            {tx.direction === 'outgoing' ? 'Outgoing' : 'Incoming'}
+                                        </p>
+                                        <p className="text-xs font-bold text-on-surface">
+                                            ${tx.amount?.toLocaleString() || '0'}
+                                        </p>
+                                        <p className="text-[10px] text-on-surface-variant font-mono mt-1 truncate">
+                                            {tx.direction === 'outgoing' ? `To: ${tx.to}` : `From: ${tx.from}`}
+                                        </p>
+                                        {tx.timestamp && (
+                                            <p className="text-[10px] text-on-surface-variant/60 mt-1">
+                                                {new Date(tx.timestamp).toLocaleString()}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="pb-6">
-                                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase mb-1">Latest Detection</p>
-                                    <p className="text-xs font-bold text-on-surface">Transfer to External Node</p>
-                                    <p className="text-[10px] text-error font-medium mt-1">Obfuscation Risk High</p>
+                            )) : (
+                                <div className="text-center py-8 text-on-surface-variant">
+                                    <span className="material-symbols-outlined text-3xl mb-2 block">receipt_long</span>
+                                    <p className="text-xs">No transactions found</p>
                                 </div>
-                            </div>
-                            
-                            <div className="flex gap-4 group">
-                                <div className="flex flex-col items-center">
-                                    <div className="w-2 h-2 rounded-full bg-primary mb-1"></div>
-                                    <div className="w-px flex-1 bg-outline-variant/30"></div>
-                                </div>
-                                <div className="pb-6">
-                                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase mb-1">Initial Trigger</p>
-                                    <p className="text-xs font-bold text-on-surface">Deposit Velocity Spike</p>
-                                    <p className="text-[10px] text-primary font-medium mt-1">Unusual Volume</p>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-4 group">
-                                <div className="flex flex-col items-center">
-                                    <div className="w-2 h-2 rounded-full bg-tertiary mb-1"></div>
-                                    <div className="w-px h-12 bg-transparent"></div>
-                                </div>
-                                <div>
-                                    <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase mb-1">Historical</p>
-                                    <p className="text-xs font-bold text-on-surface">Account Established</p>
-                                    <p className="text-[10px] text-tertiary font-medium mt-1">Intermediary hop tracked</p>
-                                </div>
-                            </div>
+                            )}
                         </div>
 
                         <button className="w-full mt-8 py-3 text-xs font-bold text-primary uppercase tracking-[0.2em] border border-primary/20 rounded hover:bg-primary/5 transition-colors">
