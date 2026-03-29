@@ -24,6 +24,12 @@ export const fetchGraph = (limit = 50, time_window = 24 * 60 * 60, failed_only =
     return a;
 }
 
+export const fetchGraphBetweenAccounts = (sourceAccountId, targetAccountId, limit = 100) => {
+    return api.get(`/graph/${sourceAccountId}/${targetAccountId}`, {
+        params: { limit }
+    });
+};
+
 export const fetchFraudDetection = (accountId) => {
     return api.get(`/detect/${accountId}`);
 };
@@ -58,6 +64,10 @@ export const fetchDashboardStats = () => {
     return api.get('/stats/dashboard');
 };
 
+export const fetchAverageRisk = (windowSeconds = 24 * 60 * 60) => {
+    return api.get('/stats/avg-risk', { params: { window_seconds: windowSeconds } });
+};
+
 // Accounts endpoints
 export const fetchAccounts = (limit = 50) => {
     return api.get('/accounts', { params: { limit } });
@@ -65,13 +75,49 @@ export const fetchAccounts = (limit = 50) => {
 
 // Investigations endpoints
 export const fetchInvestigations = (limit = 20) => {
-    return api.get('/investigations', { params: { limit } });
+    return api.get('/investigation/list', { params: { limit } });
+};
+
+export const createInvestigation = (payload) => {
+    return api.post('/investigation', payload);
+};
+
+export const updateInvestigation = (investigationId, payload) => {
+    return api.patch(`/investigation/${investigationId}`, payload);
 };
 
 // Reports endpoints
-export const fetchReportSummary = (accountId = null) => {
-    const params = accountId ? { account_id: accountId } : {};
+export const fetchReportSummary = (filters = {}) => {
+    const params = {
+        account_id: filters.accountId || undefined,
+        source_account: filters.sourceAccount || undefined,
+        target_account: filters.targetAccount || undefined,
+        start_date: filters.startDate || undefined,
+        end_date: filters.endDate || undefined,
+    };
     return api.get('/reports/summary', { params });
+};
+
+export const downloadReportPdf = (filters = {}) => {
+    const params = {
+        account_id: filters.accountId || undefined,
+        source_account: filters.sourceAccount || undefined,
+        target_account: filters.targetAccount || undefined,
+        start_date: filters.startDate || undefined,
+        end_date: filters.endDate || undefined,
+    };
+    return api.get('/reports/export/pdf', { params, responseType: 'blob' });
+};
+
+export const downloadReportExcel = (filters = {}) => {
+    const params = {
+        account_id: filters.accountId || undefined,
+        source_account: filters.sourceAccount || undefined,
+        target_account: filters.targetAccount || undefined,
+        start_date: filters.startDate || undefined,
+        end_date: filters.endDate || undefined,
+    };
+    return api.get('/reports/export/excel', { params, responseType: 'blob' });
 };
 
 // Health check

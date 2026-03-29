@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import GraphView from '../components/GraphView';
 import { useGraph } from '../hooks/useGraph';
-import { fetchAlertsFeed, fetchDashboardStats } from '../services/api';
+import { fetchAlertsFeed, fetchDashboardStats, fetchAverageRisk } from '../services/api';
 
 const timeWindowPresets = [
   { label: "Last 1min", value: 60 },
@@ -24,13 +24,23 @@ const Dashboard = () => {
   const [alerts, setAlerts] = useState([]);
   const [stats, setStats] = useState(null);
   const [selectedAccount, setSelectedAccount] = useState(null);
+  const [avgRisk, setAvgRisk] = useState(null);
   const [newAlertIds, setNewAlertIds] = useState(new Set());
   const [lastUpdate, setLastUpdate] = useState(null);
   const [isCustomPopoverOpen, setIsCustomPopoverOpen] = useState(false);
   const [customAmount, setCustomAmount] = useState('');
   const [customUnit, setCustomUnit] = useState('minutes');
   const [customValidationError, setCustomValidationError] = useState('');
-  const { graphData, loading, timeWindow, setTimeWindow } = useGraph();
+  const {
+    graphData,
+    loading,
+    timeWindow,
+    setTimeWindow,
+    failedOnly,
+    setFailedOnly,
+    fraudOnly,
+    setFraudOnly,
+  } = useGraph();
   const intervalRef = useRef(null);
   const prevAlertIdsRef = useRef(new Set());
   const customPopoverRef = useRef(null);
@@ -71,6 +81,11 @@ const Dashboard = () => {
         if (statsRes.data) {
           setStats(statsRes.data);
         }
+
+        const avgRiskRes = await fetchAverageRisk(timeWindow.value);
+        if (avgRiskRes.data) {
+          setAvgRisk(avgRiskRes.data);
+        }
       } catch (err) {
         console.error("Failed to fetch data", err);
       }
@@ -85,7 +100,7 @@ const Dashboard = () => {
         clearInterval(intervalRef.current);
       }
     };
-  }, []);
+  }, [timeWindow.value]);
 
   useEffect(() => {
     const onDocumentClick = (event) => {
@@ -147,6 +162,7 @@ const Dashboard = () => {
   const criticalAlerts = stats?.critical_alerts || alerts.filter(a => (a.risk_score || 0) > 0.90).length || 0;
   const activeCases = stats?.active_cases || alerts.length || 0;
   const weeklyChangePct = stats?.weekly_change_pct || 0;
+  const avgRiskPct = avgRisk?.avg_risk_pct || 0;
 
   // Risk distribution
   const riskDistribution = stats?.risk_distribution || {
@@ -180,7 +196,7 @@ const Dashboard = () => {
             <span className="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
             Dashboard
           </Link>
-          <Link to="/workspace" className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold">
+          <Link to="/investigation" className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold">
             <span className="material-symbols-outlined mr-4" data-icon="security">security</span>
             Investigations
           </Link>
@@ -188,10 +204,10 @@ const Dashboard = () => {
             <span className="material-symbols-outlined mr-4" data-icon="warning">warning</span>
             Alerts
           </a>
-          <a className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold" href="#">
+          <Link to="/transactions" className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold">
             <span className="material-symbols-outlined mr-4" data-icon="payments">payments</span>
             Transactions
-          </a>
+          </Link>
           <Link to="/reports" className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-4 font-manrope text-xs uppercase tracking-widest font-bold">
             <span className="material-symbols-outlined mr-4" data-icon="analytics">analytics</span>
             Reports
@@ -202,9 +218,9 @@ const Dashboard = () => {
           </a>
         </nav>
         <div className="px-6 mb-6">
-          <button className="w-full bg-primary text-on-primary py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-primary-container transition-colors">
+          <Link to="/investigation" className="block w-full bg-primary text-on-primary py-3 rounded-lg text-center font-bold text-xs uppercase tracking-widest hover:bg-primary-container transition-colors">
             New Investigation
-          </button>
+          </Link>
         </div>
         <div className="mt-auto border-t border-outline-variant/10 pt-4">
           <a className="text-on-surface/70 hover:bg-surface-container transition-all flex items-center px-6 py-3 font-manrope text-xs uppercase tracking-widest font-bold" href="#">
@@ -267,7 +283,7 @@ const Dashboard = () => {
           </section>
 
           {/* High-Level Metrics Bento Grid */}
-          <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <section className="grid grid-cols-1 md:grid-cols-5 gap-6">
             <div className="bg-surface-container-lowest p-8 flex flex-col justify-between min-h-[160px] shadow-[0_4px_24px_-12px_rgba(0,0,0,0.08)]">
               <div>
                 <div className="flex justify-between items-start mb-4">
@@ -281,6 +297,19 @@ const Dashboard = () => {
                   {weeklyChangePct >= 0 ? '+' : ''}{weeklyChangePct}%
                 </span>
                 <span className="text-[10px] text-on-surface-variant font-medium">vs last week</span>
+              </div>
+            </div>
+
+            <div className="bg-surface-container-lowest p-8 flex flex-col justify-between min-h-[160px] shadow-[0_4px_24px_-12px_rgba(0,0,0,0.08)]">
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Avg Risk ({timeWindow.label})</span>
+                  <span className="material-symbols-outlined text-secondary/50" data-icon="monitoring">monitoring</span>
+                </div>
+                <div className="text-3xl font-bold tracking-tight">{avgRiskPct.toFixed(1)}%</div>
+              </div>
+              <div className="mt-4 w-full bg-surface-container h-1 rounded-full overflow-hidden">
+                <div className="bg-secondary h-full" style={{ width: `${Math.min(100, avgRiskPct)}%` }}></div>
               </div>
             </div>
 
@@ -344,10 +373,27 @@ const Dashboard = () => {
                     {selectedAccount && <span className="text-primary ml-2">• Highlighting: {selectedAccount}</span>}
                   </p>
                 </div>
-                <button className="bg-surface-container-highest px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm" data-icon="filter_list">filter_list</span>
-                  Filters
-                </button>
+                <div className="bg-surface-container-highest px-4 py-2 rounded-lg flex items-center gap-4">
+                  <span className="material-symbols-outlined text-sm text-on-surface-variant" data-icon="filter_list">filter_list</span>
+                  <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-on-surface cursor-pointer">
+                    <input
+                      checked={fraudOnly}
+                      className="h-3.5 w-3.5 accent-primary"
+                      onChange={(e) => setFraudOnly(e.target.checked)}
+                      type="checkbox"
+                    />
+                    Fraud only
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-on-surface cursor-pointer">
+                    <input
+                      checked={failedOnly}
+                      className="h-3.5 w-3.5 accent-primary"
+                      onChange={(e) => setFailedOnly(e.target.checked)}
+                      type="checkbox"
+                    />
+                    Failed only
+                  </label>
+                </div>
                 <div className="flex gap-2">
                   {
                     timeWindowPresets.map((preset, idx) => {

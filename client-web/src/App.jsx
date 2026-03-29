@@ -16,8 +16,10 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/investigate" element={<Investigator />} />
-        <Route path="/workspace" element={<InvestigationWorkspace />} />
+        <Route path="/transactions" element={<InvestigationWorkspace />} />
+        <Route path="/investigation" element={<Investigator />} />
+        <Route path="/workspace" element={<Navigate to="/transactions" replace />} />
+        <Route path="/investigate" element={<Navigate to="/investigation" replace />} />
         <Route path="/reports" element={<ReportGenerator />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
