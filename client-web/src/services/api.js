@@ -7,14 +7,22 @@ const api = axios.create({
     timeout: 10000,
 });
 
-// Graph and detection endpoints
+// raph and detection endpoints
 export const fetchGraphData = (accountId) => {
     return api.get(`/graph/${accountId}`);
 };
 
-export const fetchFullNetworkGraph = () => {
-    return api.get('/graph/full/network');
-};
+export const fetchGraph = (limit = 50, time_window = 24 * 60 * 60, failed_only = false, fraud_only = false) => {
+    const a = api.get('/graph', {
+        params: {
+            limit: limit,
+            time_window: time_window,
+            fraud_only: fraud_only,
+            failed_only: failed_only,
+        }
+    })
+    return a;
+}
 
 export const fetchFraudDetection = (accountId) => {
     return api.get(`/detect/${accountId}`);
